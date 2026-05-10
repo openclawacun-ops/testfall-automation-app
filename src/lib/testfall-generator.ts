@@ -166,6 +166,7 @@ function shortRequirement(requirement: string) {
 
 function inferCategory(requirement: string, preset: TestForgePreset) {
   const text = requirement.toLowerCase();
+  if (/barrierefrei|accessibility|wcag|pdf\/a|pdf|serienbrief|formularvorlage|dms|dokument/.test(text)) return "Document Accessibility";
   if (/login|auth|rolle|berechtigung|permission|passwort/.test(text)) return "Access & Security";
   if (/export|csv|excel|xlsx|download|bericht|report/.test(text)) return "Export & Reporting";
   if (/api|schnittstelle|integration|import|sync/.test(text)) return "Integration";
@@ -176,6 +177,7 @@ function inferCategory(requirement: string, preset: TestForgePreset) {
 
 function inferRisk(requirement: string): GeneratedTestcase["risk"] {
   const text = requirement.toLowerCase();
+  if (/barrierefrei|accessibility|wcag|pdf\/a|serienbrief|formularvorlage|dms/.test(text)) return "medium";
   if (/sicherheit|security|zahlung|payment|daten|privacy|kundendaten|kritisch|löschen|delete/.test(text)) return "high";
   if (/export|import|integration|rolle|berechtigung|frist|deadline|validierung/.test(text)) return "medium";
   return "low";
@@ -228,8 +230,70 @@ function makeTestData(requirement: string, variantSuffix: string, variant: Testc
   return data;
 }
 
+function isDocumentAccessibilityRequirement(requirement: string) {
+  return /barrierefrei|accessibility|wcag|pdf\/a|pdf|serienbrief|formularvorlage|dms|dokument/i.test(requirement);
+}
+
+function makeDocumentAccessibilitySteps(requirement: string, variant: TestcaseVariant): TestStep[] {
+  const short = shortRequirement(requirement);
+  if (variant === "negative") {
+    return [
+      { step: 1, action: "Im DMS eine nicht barrierefreie oder beschädigte Formularvorlage als Gegenprobe auswählen, z. B. ohne Tags, mit leerem Alternativtext oder falscher Lesereihenfolge.", expected: "Die Gegenprobe ist eindeutig als nicht barrierefrei prüfbar und vom positiven Referenzfall getrennt." },
+      { step: 2, action: "Die Vorlage in einem Serienbrief verwenden und denselben Empfänger-/Datensatzkontext wie im positiven Fall wählen.", expected: "Der Serienbrief kann reproduzierbar mit identischem fachlichem Inhalt gestartet werden." },
+      { step: 3, action: "Serienbrief erzeugen und als PDF ausgeben.", expected: "Das System erzeugt ein PDF oder meldet nachvollziehbar, warum die Vorlage nicht verarbeitet werden kann." },
+      { step: 4, action: "PDF mit einem Accessibility-/PDF-Prüfwerkzeug gegen Tags, Überschriftenstruktur, Formularfelder, Tabellenstruktur und Lesereihenfolge prüfen.", expected: "Die Barrierefreiheitsmängel werden erkannt; das Ergebnis wird nicht fälschlich als vollständig barrierefrei bewertet." },
+      { step: 5, action: "Prüfen, ob DMS-Metadaten, Dokumentenstatus und Ablage trotz fehlerhafter Vorlage korrekt nachvollziehbar bleiben.", expected: "Der Fehlerzustand ist dokumentiert; es entsteht keine unkontrollierte oder falsch freigegebene Dokumentversion." },
+      { step: 6, action: "Die Vorlage korrigieren oder durch eine barrierefreie Referenzvorlage ersetzen und den Serienbrief erneut erzeugen.", expected: "Nach Korrektur entsteht ein prüfbares PDF ohne die zuvor festgestellten Accessibility-Mängel." },
+      { step: 7, action: "Abweichung mit Vorlage, generiertem PDF, Prüfbericht und DMS-Dokument-ID dokumentieren.", expected: `Der Negativtest zu "${short}" ist fachlich nachvollziehbar und reproduzierbar.` },
+    ];
+  }
+  if (variant === "edge_regression") {
+    return [
+      { step: 1, action: "Eine barrierefreie DMS-Formularvorlage mit mehreren Seiten, Überschriften, Tabellen, Formularfeldern und Sonderzeichen vorbereiten.", expected: "Die Vorlage enthält typische Randfälle, bleibt aber fachlich gültig." },
+      { step: 2, action: "Serienbrief mit mehreren Empfängerdatensätzen erzeugen, darunter lange Namen, Umlaute, Sonderzeichen und leere optionale Felder.", expected: "Alle Datensätze werden verarbeitet; es kommt nicht zu Layoutabbrüchen oder abgeschnittenen Inhalten." },
+      { step: 3, action: "Für mindestens zwei erzeugte PDFs Tags, Lesereihenfolge, Formularfeldnamen und Tabellenstruktur prüfen.", expected: "Die Barrierefreiheitsstruktur bleibt über alle Serienbriefvarianten hinweg erhalten." },
+      { step: 4, action: "PDF-Metadaten, Spracheinstellung, Dokumenttitel und PDF/A- bzw. Accessibility-Konformität prüfen.", expected: "Metadaten und Konformitätsmerkmale bleiben korrekt gesetzt." },
+      { step: 5, action: "Erzeugte Dokumente im DMS erneut öffnen, herunterladen und erneut prüfen.", expected: "Ablage, Download und erneute Prüfung verändern die Accessibility-Struktur nicht." },
+      { step: 6, action: "Regression prüfen: dieselbe Vorlage für einen einfachen Standarddatensatz erneut ausführen.", expected: "Der Standardfall bleibt erfolgreich und wird nicht durch Randfalldaten beeinflusst." },
+      { step: 7, action: "Prüfberichte und betroffene Serienbrief-Dokument-IDs im Testergebnis verlinken.", expected: "Der Randfall ist mit konkreten Nachweisen review-fähig dokumentiert." },
+    ];
+  }
+  if (variant === "permission") {
+    return [
+      { step: 1, action: "Mit einer Rolle anmelden, die DMS-Formularvorlagen lesen und Serienbriefe erzeugen darf.", expected: "Die barrierefreie Formularvorlage ist sichtbar und kann für Serienbriefe ausgewählt werden." },
+      { step: 2, action: "Serienbrief mit der barrierefreien Vorlage erzeugen und PDF im DMS ablegen.", expected: "Dokument wird erzeugt, gespeichert und bleibt der berechtigten Rolle zugänglich." },
+      { step: 3, action: "Mit einer eingeschränkten Rolle anmelden, die keine Vorlagen ändern oder keine DMS-Dokumente exportieren darf.", expected: "Die eingeschränkte Rolle ist aktiv und besitzt weniger Rechte." },
+      { step: 4, action: "Versuchen, die Formularvorlage zu ändern, Barrierefreiheitsmerkmale zu entfernen oder das PDF zu exportieren.", expected: "Unzulässige Änderungen/Exports werden verhindert oder eindeutig protokolliert." },
+      { step: 5, action: "Direkten URL-/Dokumentenaufruf auf Vorlage und erzeugtes PDF versuchen.", expected: "Berechtigungen werden auch bei Direktaufruf angewendet." },
+      { step: 6, action: "Mit berechtigter Rolle prüfen, ob Vorlage und erzeugtes PDF weiterhin unverändert barrierefrei sind.", expected: "Die Accessibility-Eigenschaften wurden durch unberechtigte Zugriffe nicht verändert." },
+      { step: 7, action: "Rollen, Berechtigungsfehler und betroffene Dokument-IDs dokumentieren.", expected: "Die DMS-Berechtigungsprüfung ist vollständig nachvollziehbar." },
+    ];
+  }
+  if (variant === "integration_export") {
+    return [
+      { step: 1, action: "Barrierefreie DMS-Formularvorlage im Serienbriefprozess auswählen und Empfängerdaten laden.", expected: "Vorlage und Datenquelle sind eindeutig ausgewählt." },
+      { step: 2, action: "Serienbrief ausführen und PDF-Dokument erzeugen.", expected: "Das PDF wird erzeugt und erhält eine eindeutige Dokument-ID im DMS." },
+      { step: 3, action: "PDF aus dem DMS herunterladen oder an den vorgesehenen Folgeprozess übergeben.", expected: "Download/Übergabe funktioniert ohne Dateibeschädigung." },
+      { step: 4, action: "Heruntergeladenes/übergebenes PDF auf Tags, Lesereihenfolge, Formularfelder, Sprache und PDF-Konformität prüfen.", expected: "Die Accessibility-Merkmale bleiben auch nach DMS-Ablage und Export erhalten." },
+      { step: 5, action: "Dokumentenmetadaten aus dem DMS mit PDF-Metadaten und Serienbriefdaten vergleichen.", expected: "Titel, Dokumenttyp, ID, Empfängerbezug und Status sind konsistent." },
+      { step: 6, action: "Erzeugung/Export wiederholen und Versionierung bzw. Duplikatverhalten prüfen.", expected: "Keine ungewollten Duplikate; Versionen und Zeitstempel sind nachvollziehbar." },
+      { step: 7, action: "DMS-ID, Exportdatei, Prüfbericht und Übergabeziel im Testergebnis dokumentieren.", expected: "Der Folgeprozess ist end-to-end nachweisbar." },
+    ];
+  }
+  return [
+    { step: 1, action: "Barrierefreie DMS-Formularvorlage im Testsystem öffnen und strukturelle Merkmale prüfen: Tags, Überschriften, Sprache, Lesereihenfolge und Formularfelder.", expected: "Die Vorlage ist im DMS verfügbar und besitzt die erwarteten Accessibility-Strukturmerkmale." },
+    { step: 2, action: "Die Formularvorlage in einem Serienbrief auswählen und einen repräsentativen Empfänger-/Datensatz laden.", expected: "Der Serienbrief übernimmt Vorlage und Datenquelle ohne Warnungen oder Strukturverlust." },
+    { step: 3, action: "Serienbrief erzeugen und als PDF speichern/ausgeben.", expected: "Das PDF wird erfolgreich erzeugt und im DMS oder Zielordner abgelegt." },
+    { step: 4, action: "Generiertes PDF mit Accessibility-Prüfung öffnen und Tags, Überschriftenhierarchie, Lesereihenfolge, Formularfeldnamen und Alternativtexte prüfen.", expected: "Die Barrierefreiheitsinformationen aus der DMS-Formularvorlage bleiben im erzeugten PDF erhalten." },
+    { step: 5, action: "PDF-Inhalte gegen Serienbriefdaten prüfen: Empfängerwerte, dynamische Felder, Pflichttexte und Dokumentlayout.", expected: "Alle Serienbriefdaten sind korrekt eingefügt, lesbar und vollständig." },
+    { step: 6, action: "Dokument im DMS erneut öffnen, herunterladen und Accessibility-Prüfung wiederholen.", expected: "DMS-Ablage und Download verändern die Accessibility-Merkmale nicht." },
+    { step: 7, action: "Testergebnis mit DMS-Dokument-ID, erzeugter PDF-Datei und Accessibility-Prüfbericht dokumentieren.", expected: `Die Anforderung "${short}" ist mit konkretem PDF-Nachweis review-fähig bestätigt.` },
+  ];
+}
+
 function makeSteps(requirement: string, category: string, variant: TestcaseVariant): TestStep[] {
   const short = shortRequirement(requirement);
+  if (isDocumentAccessibilityRequirement(requirement)) return makeDocumentAccessibilitySteps(requirement, variant);
   if (variant === "negative") {
     return [
       { step: 1, action: "Testumgebung öffnen und mit einer fachlich passenden Rolle anmelden.", expected: "Die Anwendung ist erreichbar, die Rolle ist aktiv und der Ausgangszustand ist eindeutig dokumentiert." },
@@ -356,21 +420,21 @@ function columnName(index: number) {
 function writeXlsx(filePath: string, testcases: GeneratedTestcase[]) {
   const rows = [
     ["Testfall-ID", "Testfall-Titel", "Variante", "Kategorie", "Priorität", "Risiko", "Vorbedingungen", "Testdaten", "Step-Nr", "Aktion", "Erwartetes Ergebnis je Step", "Gesamterwartung", "Quellanforderung", "Vorlagenbezug"],
-    ...testcases.flatMap((testcase) => testcase.steps.map((step) => [
-      testcase.id,
-      testcase.title,
-      testcase.variant,
-      testcase.category,
-      testcase.priority,
-      testcase.risk,
-      testcase.preconditions.join("\n"),
-      testcase.test_data.join("\n"),
+    ...testcases.flatMap((testcase) => testcase.steps.map((step, stepIndex) => [
+      stepIndex === 0 ? testcase.id : "",
+      stepIndex === 0 ? testcase.title : "",
+      stepIndex === 0 ? testcase.variant : "",
+      stepIndex === 0 ? testcase.category : "",
+      stepIndex === 0 ? testcase.priority : "",
+      stepIndex === 0 ? testcase.risk : "",
+      stepIndex === 0 ? testcase.preconditions.join("\n") : "",
+      stepIndex === 0 ? testcase.test_data.join("\n") : "",
       step.step,
       step.action,
       step.expected,
-      testcase.expected_result,
-      testcase.source_requirement,
-      testcase.template_alignment ?? "",
+      stepIndex === 0 ? testcase.expected_result : "",
+      stepIndex === 0 ? testcase.source_requirement : "",
+      stepIndex === 0 ? testcase.template_alignment ?? "" : "",
     ])),
   ];
   const sheetRows = rows.map((row, rowIndex) => {
