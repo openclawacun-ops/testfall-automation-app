@@ -39,6 +39,10 @@ export type TestfallCase = {
   category?: string;
   priority?: string;
   risk?: string;
+  preconditions: string[];
+  testData: string[];
+  steps: Array<{ step?: number; action?: string; expected?: string }>;
+  expectedResult?: string;
   stepsCount: number;
   sourceRequirement?: string;
   quality?: TestcaseQualitySummary;
@@ -110,6 +114,17 @@ function asArray(value: unknown): unknown[] {
 
 function asStringArray(value: unknown): string[] {
   return asArray(value).map(String);
+}
+
+function asStepArray(value: unknown): Array<{ step?: number; action?: string; expected?: string }> {
+  return asArray(value).map((item) => {
+    const record = asRecord(item);
+    return {
+      step: asNumber(record?.step),
+      action: asString(record?.action),
+      expected: asString(record?.expected),
+    };
+  });
 }
 
 function safeRunDir(runId: string) {
@@ -207,6 +222,7 @@ export function getTestfallAutomationRun(runId: string): TestfallRunDetail | nul
   const testcases = asArray(testcasesJson?.testcases).map((item) => {
     const record = asRecord(item);
     const testcaseQuality = asRecord(record?.quality);
+    const steps = asStepArray(record?.steps);
     return {
       id: asString(record?.id),
       title: asString(record?.title),
@@ -214,8 +230,12 @@ export function getTestfallAutomationRun(runId: string): TestfallRunDetail | nul
       category: asString(record?.category),
       priority: asString(record?.priority),
       risk: asString(record?.risk),
+      preconditions: asStringArray(record?.preconditions),
+      testData: asStringArray(record?.test_data),
+      steps,
+      expectedResult: asString(record?.expected_result),
       sourceRequirement: asString(record?.source_requirement),
-      stepsCount: asArray(record?.steps).length,
+      stepsCount: steps.length,
       quality: testcaseQuality ? {
         score: asNumber(testcaseQuality.score),
         level: asString(testcaseQuality.level),

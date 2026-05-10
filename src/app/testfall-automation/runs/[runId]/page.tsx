@@ -97,6 +97,31 @@ export default async function TestfallAutomationRunPage({ params }: Props) {
                 <h3 className="mt-3 text-base font-bold text-slate-950">{testcase.title ?? "Unbenannter Testfall"}</h3>
                 <p className="mt-2 text-sm text-slate-500">{testcase.stepsCount} Steps{testcase.quality?.domainProfile ? ` · ${testcase.quality.domainProfile.replaceAll("_", " ")}` : ""}</p>
                 {testcase.quality?.warnings.length ? <ul className="mt-3 grid gap-1 text-xs leading-5 text-amber-700">{testcase.quality.warnings.slice(0, 3).map((warning) => <li key={warning} className="rounded-2xl bg-amber-50 px-3 py-2">⚠ {warning}</li>)}</ul> : null}
+                <div className="mt-4 grid gap-4 rounded-3xl border border-white/80 bg-white/70 p-4 shadow-inner shadow-slate-200/60">
+                  <MiniSection title="Vorbedingungen" items={testcase.preconditions} empty="Keine Vorbedingungen im Testfall." />
+                  <MiniSection title="Testdaten" items={testcase.testData} empty="Keine Testdaten im Testfall." />
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Schritte</p>
+                    {testcase.steps.length ? (
+                      <ol className="mt-2 grid gap-3">
+                        {testcase.steps.map((step, stepIndex) => (
+                          <li key={`${testcase.id ?? "tc"}-step-${step.step ?? stepIndex}`} className="rounded-2xl border border-slate-200 bg-white/82 p-3 text-xs leading-5 text-slate-700">
+                            <p className="font-black text-slate-950">{step.step ?? stepIndex + 1}. Aktion</p>
+                            <p className="mt-1">{step.action ?? "Aktion fehlt"}</p>
+                            <p className="mt-2 font-black text-slate-950">Erwartetes Ergebnis</p>
+                            <p className="mt-1">{step.expected ?? "Erwartetes Ergebnis fehlt"}</p>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : <p className="mt-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">Keine Schritte im Testfall.</p>}
+                  </div>
+                  {testcase.expectedResult ? (
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">Gesamterwartung</p>
+                      <p className="mt-2 rounded-2xl bg-slate-950 p-3 text-xs leading-5 text-white">{testcase.expectedResult}</p>
+                    </div>
+                  ) : null}
+                </div>
                 {testcase.sourceRequirement ? <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-400">Quelle: {testcase.sourceRequirement}</p> : null}
               </article>
             ))}
@@ -155,4 +180,17 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
 
 function Empty({ children }: { children: ReactNode }) {
   return <p className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">{children}</p>;
+}
+
+function MiniSection({ title, items, empty }: { title: string; items: string[]; empty: string }) {
+  return (
+    <div>
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{title}</p>
+      {items.length ? (
+        <ul className="mt-2 grid gap-2 text-xs leading-5 text-slate-700">
+          {items.map((item) => <li key={item} className="rounded-2xl bg-slate-50 px-3 py-2">• {item}</li>)}
+        </ul>
+      ) : <p className="mt-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">{empty}</p>}
+    </div>
+  );
 }
