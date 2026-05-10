@@ -189,6 +189,45 @@ function extractTemplateHints(templateText: string) {
   return { columns, preview };
 }
 
+function extractConcreteHints(requirement: string, templateHints?: ReturnType<typeof extractTemplateHints>) {
+  const compact = requirement.replace(/\s+/g, " ").trim();
+  const quoted = Array.from(compact.matchAll(/["“”'`„‚]([^"“”'`„‚]{3,80})["“”'`„‚]/g)).map((match) => match[1].trim());
+  const ids = Array.from(compact.matchAll(/\b[A-ZÄÖÜ]{2,}[-_/]?[A-Z0-9ÄÖÜ]{1,}\b|\b\d{3,}\b/g)).map((match) => match[0]);
+  const fields = Array.from(compact.matchAll(/\b(?:Feld|Spalte|Attribut|Status|Typ|Art|Rolle|User|Benutzer|Kunde|Dokument|Datei|Rechnung|Angebot|Auftrag|Projekt)\s*[:=\-]?\s*([A-ZÄÖÜa-zäöü0-9 _./-]{3,60})/g)).map((match) => match[0].trim());
+  const emails = Array.from(compact.matchAll(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g)).map((match) => match[0]);
+  const dates = Array.from(compact.matchAll(/\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b/g)).map((match) => match[0]);
+  const amounts = Array.from(compact.matchAll(/\b\d+(?:[.,]\d{2})?\s?(?:€|EUR|%|Stk\.|Tage|Wochen|Monate)\b/gi)).map((match) => match[0]);
+  const statusWords = Array.from(compact.matchAll(/\b(?:offen|neu|aktiv|inaktiv|freigegeben|abgelehnt|storniert|bezahlt|gebucht|gesendet|importiert|exportiert|archiviert|fehlerhaft|gültig|ungültig)\b/gi)).map((match) => match[0]);
+  const templateColumns = templateHints?.columns.slice(0, 8) ?? [];
+  const data = Array.from(new Set([...quoted, ...fields, ...emails, ...dates, ...amounts, ...ids, ...statusWords])).slice(0, 8);
+  return { data, templateColumns };
+}
+
+function makePreconditions(requirement: string, category: string, templateHints: ReturnType<typeof extractTemplateHints>) {
+  const hints = extractConcreteHints(requirement, templateHints);
+  const preconditions = [
+    `${category}-Bereich ist in einer Review-/Testumgebung erreichbar`,
+    `Ausgangszustand zur Anforderung vorbereitet: ${shortRequirement(requirement)}`,
+  ];
+  if (hints.templateColumns.length) preconditions.push(`Vorlage geladen; relevante Spalten: ${hints.templateColumns.join(", ")}`);
+  else preconditions.push("Keine Vorlage geliefert; Struktur wird aus der Quelldatei abgeleitet");
+  if (hints.data.length) preconditions.push(`Konkrete Referenzwerte aus der Quelle identifiziert: ${hints.data.slice(0, 5).join(", ")}`);
+  return preconditions;
+}
+
+function makeTestData(requirement: string, variantSuffix: string, variant: TestcaseVariant, templateHints: ReturnType<typeof extractTemplateHints>) {
+  const hints = extractConcreteHints(requirement, templateHints);
+  const data = [`Variante: ${variantSuffix}`];
+  if (hints.data.length) data.push(`Quellnahe Testdaten: ${hints.data.join(" | ")}`);
+  else data.push(`Testdaten aus Anforderung ableiten: ${shortRequirement(requirement)}`);
+  if (hints.templateColumns.length) data.push(`Zu befüllende Vorlagenspalten prüfen: ${hints.templateColumns.join(" | ")}`);
+  if (variant === "negative") data.push("Negativdaten: Pflichtwert leer, ungültiges Format oder widersprüchlicher Status");
+  if (variant === "edge_regression") data.push("Randdaten: Minimal-/Maximalwert, Sonderzeichen, Duplikat oder Wiederholung");
+  if (variant === "permission") data.push("Rollendaten: berechtigte Rolle plus eingeschränkte Gegenrolle");
+  if (variant === "integration_export") data.push("Export-/Folgedaten: erzeugte ID, Status, Datei/Report und Übergabezeitpunkt prüfen");
+  return data;
+}
+
 function makeSteps(requirement: string, category: string, variant: TestcaseVariant): TestStep[] {
   const short = shortRequirement(requirement);
   if (variant === "negative") {
@@ -268,16 +307,8 @@ function buildTestcases(requirements: string[], preset: TestForgePreset, templat
         category,
         priority: risk === "high" ? "High" : risk === "medium" ? "Medium" : "Low",
         risk,
-        preconditions: [
-          "Review-fähige Testumgebung ist verfügbar",
-          "Benötigte Testrolle und Basisdaten sind angelegt",
-          `Vorlagenbezug: ${templateHints.columns.length ? `Spalten ${templateHints.columns.join(", ")}` : templateHints.preview ? "Template-Kontext wurde berücksichtigt" : "keine Vorlage geliefert"}`,
-        ],
-        test_data: [
-          `Variante: ${variantConfig.suffix}`,
-          "Konkrete Kundendaten im Review ergänzen",
-          "Eindeutige Test-ID je Ausführung verwenden",
-        ],
+        preconditions: makePreconditions(requirement, category, templateHints),
+        test_data: makeTestData(requirement, variantConfig.suffix, variantConfig.variant, templateHints),
         steps: makeSteps(requirement, category, variantConfig.variant),
         expected_result: `${variantConfig.label}: Fachliches Ergebnis entspricht der Anforderung; Abweichungen sind reproduzierbar dokumentiert und nach Vorlage reviewbar.`,
         source_requirement: requirement,
