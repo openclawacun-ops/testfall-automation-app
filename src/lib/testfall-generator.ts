@@ -35,6 +35,17 @@ type GeneratedTestcase = {
   expected_result: string;
   source_requirement: string;
   template_alignment?: string;
+  quality?: TestcaseQuality;
+};
+
+type DomainProfile = "document_accessibility" | "access_security" | "export_reporting" | "integration" | "validation" | "business_process" | "core_flow";
+
+type TestcaseQuality = {
+  score: number;
+  level: "strong" | "usable" | "needs_review";
+  domain_profile: DomainProfile;
+  checks: string[];
+  warnings: string[];
 };
 
 type QualityStatus = "ready_for_review" | "review_required" | "missing_testcases" | "missing_exports";
@@ -173,6 +184,17 @@ function inferCategory(requirement: string, preset: TestForgePreset) {
   if (/zahlung|rechnung|angebot|kunde|crm/.test(text)) return preset === "tconsulting" ? "Consulting Workflow" : "Business Process";
   if (/fehler|validierung|pflicht|error|required/.test(text)) return "Validation";
   return "Core Flow";
+}
+
+function inferDomainProfile(requirement: string, preset: TestForgePreset): DomainProfile {
+  const category = inferCategory(requirement, preset);
+  if (category === "Document Accessibility") return "document_accessibility";
+  if (category === "Access & Security") return "access_security";
+  if (category === "Export & Reporting") return "export_reporting";
+  if (category === "Integration") return "integration";
+  if (category === "Validation") return "validation";
+  if (category === "Business Process" || category === "Consulting Workflow") return "business_process";
+  return "core_flow";
 }
 
 function inferRisk(requirement: string): GeneratedTestcase["risk"] {
@@ -349,6 +371,77 @@ function makeSteps(requirement: string, category: string, variant: TestcaseVaria
   ];
 }
 
+function evaluateTestcaseQuality(testcase: Omit<GeneratedTestcase, "quality">, domainProfile: DomainProfile): TestcaseQuality {
+  const warnings: string[] = [];
+  const checks: string[] = [];
+  const allText = [
+    testcase.title,
+    testcase.preconditions.join("\n"),
+    testcase.test_data.join("\n"),
+    testcase.steps.map((step) => `${step.action} ${step.expected}`).join("\n"),
+    testcase.expected_result,
+  ].join("\n");
+
+  let score = 100;
+  const stepCount = testcase.steps.length;
+  if (stepCount >= 7) checks.push("7+ fachliche Schritte vorhanden");
+  else {
+    warnings.push("Zu wenige Schritte für einen review-starken Testfall");
+    score -= 18;
+  }
+
+  const expectedPerStep = testcase.steps.every((step) => step.expected.trim().length > 24);
+  if (expectedPerStep) checks.push("Jeder Schritt hat ein erwartetes Ergebnis");
+  else {
+    warnings.push("Mindestens ein Schritt hat kein ausreichend konkretes erwartetes Ergebnis");
+    score -= 18;
+  }
+
+  if (testcase.source_requirement.length > 20) checks.push("Quellanforderung ist referenziert");
+  else {
+    warnings.push("Quellanforderung fehlt oder ist zu kurz");
+    score -= 12;
+  }
+
+  const genericPhrases = [
+    "konkrete kundendaten im review ergänzen",
+    "eindeutige test-id je ausführung verwenden",
+    "benötigte testrolle und basisdaten sind angelegt",
+  ];
+  const genericHits = genericPhrases.filter((phrase) => allText.toLowerCase().includes(phrase));
+  if (!genericHits.length) checks.push("Keine alten generischen Platzhalter erkannt");
+  else {
+    warnings.push(`Generische Platzhalter erkannt: ${genericHits.join(", ")}`);
+    score -= 25;
+  }
+
+  const concreteSignals = (allText.match(/\b(?:DMS|PDF|PDF\/A|WCAG|Tags|Lesereihenfolge|Formularfeld|Dokument-ID|Export|Import|Rolle|Status|Pflichtfeld|Metadaten|Download|Prüfbericht)\b/gi) ?? []).length;
+  if (concreteSignals >= 3) checks.push("Konkrete fachliche Prüfsignale vorhanden");
+  else {
+    warnings.push("Zu wenige konkrete fachliche Prüfsignale; Testfall braucht wahrscheinlich Domänenanreicherung oder KI-Modus");
+    score -= 20;
+  }
+
+  if (domainProfile === "document_accessibility") {
+    const required = ["PDF", "DMS", "Lesereihenfolge", "Tags"];
+    const missing = required.filter((term) => !allText.toLowerCase().includes(term.toLowerCase()));
+    if (!missing.length) checks.push("Document-Accessibility-Pflichtprüfungen enthalten");
+    else {
+      warnings.push(`Document-Accessibility-Prüfungen fehlen: ${missing.join(", ")}`);
+      score -= missing.length * 8;
+    }
+  }
+
+  const normalizedScore = Math.max(0, Math.min(100, score));
+  return {
+    score: normalizedScore,
+    level: normalizedScore >= 82 ? "strong" : normalizedScore >= 65 ? "usable" : "needs_review",
+    domain_profile: domainProfile,
+    checks,
+    warnings,
+  };
+}
+
 function buildTestcases(requirements: string[], preset: TestForgePreset, templateText = ""): GeneratedTestcase[] {
   const templateHints = extractTemplateHints(templateText);
   const variants: Array<{ variant: TestcaseVariant; label: string; suffix: string }> = [
@@ -362,9 +455,10 @@ function buildTestcases(requirements: string[], preset: TestForgePreset, templat
   return requirements.flatMap((requirement, requirementIndex) => {
     const baseRisk = inferRisk(requirement);
     const category = inferCategory(requirement, preset);
+    const domainProfile = inferDomainProfile(requirement, preset);
     return variants.map((variantConfig, variantIndex) => {
       const risk = variantConfig.variant === "negative" && baseRisk === "low" ? "medium" : baseRisk;
-      return {
+      const testcaseWithoutQuality: Omit<GeneratedTestcase, "quality"> = {
         id: `TF-${String(requirementIndex + 1).padStart(3, "0")}-${String(variantIndex + 1).padStart(2, "0")}`,
         title: `${category}: ${variantConfig.label} · ${shortRequirement(requirement)}`,
         variant: variantConfig.variant,
@@ -377,7 +471,8 @@ function buildTestcases(requirements: string[], preset: TestForgePreset, templat
         expected_result: `${variantConfig.label}: Fachliches Ergebnis entspricht der Anforderung; Abweichungen sind reproduzierbar dokumentiert und nach Vorlage reviewbar.`,
         source_requirement: requirement,
         template_alignment: templateHints.columns.length ? `Ausgabe orientiert an Vorlagenspalten: ${templateHints.columns.join(", ")}` : templateHints.preview ? `Vorlagenhinweis: ${templateHints.preview}` : undefined,
-      } satisfies GeneratedTestcase;
+      };
+      return { ...testcaseWithoutQuality, quality: evaluateTestcaseQuality(testcaseWithoutQuality, domainProfile) } satisfies GeneratedTestcase;
     });
   });
 }
@@ -419,7 +514,7 @@ function columnName(index: number) {
 
 function writeXlsx(filePath: string, testcases: GeneratedTestcase[]) {
   const rows = [
-    ["Testfall-ID", "Testfall-Titel", "Variante", "Kategorie", "Priorität", "Risiko", "Vorbedingungen", "Testdaten", "Step-Nr", "Aktion", "Erwartetes Ergebnis je Step", "Gesamterwartung", "Quellanforderung", "Vorlagenbezug"],
+    ["Testfall-ID", "Testfall-Titel", "Variante", "Kategorie", "Priorität", "Risiko", "Quality Score", "Quality Level", "Domain Profile", "Quality Warnungen", "Vorbedingungen", "Testdaten", "Step-Nr", "Aktion", "Erwartetes Ergebnis je Step", "Gesamterwartung", "Quellanforderung", "Vorlagenbezug"],
     ...testcases.flatMap((testcase) => testcase.steps.map((step, stepIndex) => [
       stepIndex === 0 ? testcase.id : "",
       stepIndex === 0 ? testcase.title : "",
@@ -427,6 +522,10 @@ function writeXlsx(filePath: string, testcases: GeneratedTestcase[]) {
       stepIndex === 0 ? testcase.category : "",
       stepIndex === 0 ? testcase.priority : "",
       stepIndex === 0 ? testcase.risk : "",
+      stepIndex === 0 ? testcase.quality?.score ?? "" : "",
+      stepIndex === 0 ? testcase.quality?.level ?? "" : "",
+      stepIndex === 0 ? testcase.quality?.domain_profile ?? "" : "",
+      stepIndex === 0 ? testcase.quality?.warnings.join("\n") ?? "" : "",
       stepIndex === 0 ? testcase.preconditions.join("\n") : "",
       stepIndex === 0 ? testcase.test_data.join("\n") : "",
       step.step,
@@ -455,7 +554,7 @@ function writeXlsx(filePath: string, testcases: GeneratedTestcase[]) {
 }
 
 function toCsv(testcases: GeneratedTestcase[]) {
-  const header = ["id", "title", "variant", "category", "priority", "risk", "preconditions", "test_data", "steps", "expected_result", "source_requirement", "template_alignment"];
+  const header = ["id", "title", "variant", "category", "priority", "risk", "quality_score", "quality_level", "domain_profile", "quality_warnings", "preconditions", "test_data", "steps", "expected_result", "source_requirement", "template_alignment"];
   const rows = testcases.map((testcase) => [
     testcase.id,
     testcase.title,
@@ -463,6 +562,10 @@ function toCsv(testcases: GeneratedTestcase[]) {
     testcase.category,
     testcase.priority,
     testcase.risk,
+    testcase.quality?.score ?? "",
+    testcase.quality?.level ?? "",
+    testcase.quality?.domain_profile ?? "",
+    testcase.quality?.warnings.join(" | ") ?? "",
     testcase.preconditions,
     testcase.test_data,
     testcase.steps.map((step) => `${step.step}. ${step.action} => ${step.expected}`).join("\n"),
@@ -480,6 +583,8 @@ function toMarkdown(project: string, testcases: GeneratedTestcase[], openQuestio
     `- Kategorie: ${testcase.category}`,
     `- Priorität: ${testcase.priority}`,
     `- Risiko: ${testcase.risk}`,
+    `- Quality: ${testcase.quality?.level ?? "n/a"} (${testcase.quality?.score ?? "n/a"}/100)`,
+    ...(testcase.quality?.warnings.length ? [`- Quality-Warnungen: ${testcase.quality.warnings.join("; ")}`] : []),
     `- Quelle: ${testcase.source_requirement}`,
     ...(testcase.template_alignment ? [`- Vorlagenbezug: ${testcase.template_alignment}`] : []),
     "",
@@ -501,15 +606,19 @@ function templateMetadata(templateText: string | undefined, templateName: string
 function buildQuality(testcases: GeneratedTestcase[], openQuestions: string[], missingExports: string[]) {
   const testcaseCount = testcases.length;
   const stepCount = testcases.reduce((sum, testcase) => sum + testcase.steps.length, 0);
+  const averageTestcaseQuality = testcaseCount ? Math.round(testcases.reduce((sum, testcase) => sum + (testcase.quality?.score ?? 0), 0) / testcaseCount) : 0;
+  const weakTestcases = testcases.filter((testcase) => testcase.quality?.level === "needs_review").map((testcase) => testcase.id);
   const issues = [
     ...(testcaseCount === 0 ? ["Keine Testfälle erzeugt"] : []),
     ...(stepCount < testcaseCount * 3 ? ["Zu wenige konkrete Steps"] : []),
+    ...(averageTestcaseQuality < 70 ? [`Durchschnittliche Testfallqualität zu niedrig: ${averageTestcaseQuality}/100`] : []),
+    ...(weakTestcases.length ? [`Testfälle mit Review-Bedarf: ${weakTestcases.slice(0, 12).join(", ")}`] : []),
     ...(openQuestions.length ? [`${openQuestions.length} offene Review-Frage(n)`] : []),
     ...(missingExports.length ? [`Fehlende Exporte: ${missingExports.join(", ")}`] : []),
   ];
   const status: QualityStatus = testcaseCount === 0 ? "missing_testcases" : missingExports.length ? "missing_exports" : openQuestions.length ? "review_required" : "ready_for_review";
-  const score = Math.max(0, 100 - openQuestions.length * 12 - missingExports.length * 18 - (testcaseCount < 2 ? 10 : 0));
-  return { status, score, testcase_count: testcaseCount, step_count: stepCount, open_questions_count: openQuestions.length, missing_exports: missingExports, issues };
+  const score = Math.max(0, Math.min(100, Math.round((averageTestcaseQuality || 75) - openQuestions.length * 8 - missingExports.length * 18 - (testcaseCount < 2 ? 10 : 0))));
+  return { status, score, testcase_count: testcaseCount, step_count: stepCount, average_testcase_quality: averageTestcaseQuality, weak_testcases: weakTestcases, open_questions_count: openQuestions.length, missing_exports: missingExports, issues };
 }
 
 export function generateTestfallRun(input: GenerateTestfallRunInput) {
@@ -561,6 +670,8 @@ export function generateTestfallRun(input: GenerateTestfallRunInput) {
     `- Quelle: ${sourceKind === "upload" ? `Upload ${sourceName}` : "Textarea"}`,
     `- Vorlage: ${template.provided ? `${template.name} (${template.bytes} bytes)` : "keine"}`,
     `- Quality: ${quality.status} (${quality.score}/100)`,
+    `- Durchschnittliche Testfallqualität: ${quality.average_testcase_quality}/100`,
+    `- Testfälle mit Review-Bedarf: ${quality.weak_testcases.length ? quality.weak_testcases.join(", ") : "keine"}`,
     `- Testfälle: ${quality.testcase_count}`,
     `- Steps: ${quality.step_count}`,
     `- Offene Fragen: ${quality.open_questions_count}`,
