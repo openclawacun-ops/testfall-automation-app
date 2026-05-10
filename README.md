@@ -1,54 +1,119 @@
-# OpenClaw Mission Control
+# TestForge — Testfall Automation App
 
-Lokales Next.js-Dashboard für Acuns OpenClaw-Agentensystem.
+Lokale Next.js-App für Testfall-Automation: Quelldateien und Vorlagen hochladen, mehrere detailreiche Testfälle generieren, Quality Report prüfen und fertige Artefakte herunterladen.
 
-## Zweck
+## Was TestForge aktuell kann
 
-Mission Control zeigt den echten Zustand des Agenten-Systems: Agenten, Aufgaben, Projekte, Memory, Dokumente, Kalenderdateien und Live-Kanalstatus. Es ist bewusst als seriöse, dunkle Kommandozentrale gestaltet — kein Spielzeug-Dashboard.
+- Upload von `.txt`, `.md`, `.csv`, `.json`, `.docx`, `.xlsx`
+- Mehrere Quelldateien gleichzeitig hochladen: jede Datei wird ein eigener Run
+- Optionaler Vorlagen-/Template-Upload
+- Coverage Mining: aus Anforderungen werden möglichst viele Szenarien erkannt
+- Pro Szenario mehrere Testfall-Varianten: Positiv, Negativ/Validierung, Randfall/Regression, Berechtigung, Export/Folgeprozess
+- XLSX-Export auf Step-Level: eine Zeile pro Step
+- Downloads: ZIP, Markdown, CSV, JSON, XLSX, Quality Report, Manifest
+- Alte Runs neu prüfen & neu generieren
+- Alles lokal: keine externen Calls, keine Kundendatenübertragung
 
-## Datenquellen
-
-Mission Control liest echte lokale OpenClaw-Daten aus:
-
-- `~/.openclaw/workspace`
-- `~/.openclaw/openclaw.json`
-- `~/.openclaw/agents/*/workspace`
-- `~/Documents/OpenClaw-Obsidian-Memory`, falls vorhanden
-
-Es werden keine Mock-Daten verwendet.
-
-## Starten
+## Lokale Entwicklung
 
 ```powershell
 cd C:\Users\openc\.openclaw\workspace\mission-control
+npm install
 npm run dev
 ```
 
-Dann im Browser öffnen:
+Dann öffnen:
 
 ```text
-http://localhost:3000
+http://localhost:3000/testfall-automation
 ```
 
-Falls Port `3000` belegt ist, zeigt Next.js automatisch einen anderen Port an.
+## Produktionsstart lokal
 
-## Build prüfen
+```powershell
+npm install
+npm run build
+npm run start
+```
+
+Dann öffnen:
+
+```text
+http://localhost:3000/testfall-automation
+```
+
+## Nutzung auf anderem Windows-PC
+
+Empfohlener Weg:
+
+1. Repo klonen:
+
+```powershell
+git clone https://github.com/openclawacun-ops/testfall-automation-app.git
+cd testfall-automation-app
+```
+
+2. Setup ausführen:
+
+```powershell
+.\scripts\setup-testforge.ps1
+```
+
+3. Starten:
+
+```powershell
+.\scripts\start-testforge.ps1
+```
+
+4. Browser öffnen:
+
+```text
+http://localhost:3000/testfall-automation
+```
+
+## Datenpfad
+
+TestForge speichert Runs standardmäßig unter:
+
+```text
+%USERPROFILE%\.openclaw\workspace\testfall-pilot\runs
+```
+
+Du kannst einen anderen Arbeitsordner setzen:
+
+```powershell
+$env:OPENCLAW_WORKSPACE="D:\TestForgeData"
+npm run dev
+```
+
+Dann nutzt TestForge:
+
+```text
+D:\TestForgeData\testfall-pilot\runs
+```
+
+Siehe `.env.example`.
+
+## Checks vor Release
 
 ```powershell
 npm run lint
+npx tsc --noEmit
 npm run build
 ```
 
-## Aktuelle Screens
+Alle drei sollten grün sein.
 
-- Team
-- Aufgaben
-- Kalender
-- Projekte
-- Memory
-- Dokumente
-- Live-Kanäle
+## Sicherheit
 
-## Nächste sinnvolle Phase
+- TestForge sendet keine Dateien extern.
+- Uploads werden lokal verarbeitet.
+- Download-Routen schützen gegen Path Traversal.
+- Alte Runs werden bei „Neu prüfen & generieren“ nicht überschrieben.
 
-Phase 4 sollte GitHub, Google Calendar, Discord Webhook-Status, File-Watcher/Auto-Refresh und detailliertere Agenten-Workloads ergänzen.
+## Nächste Produktstufe
+
+- echtes Template-Mapping pro Kundenschema
+- QC/ALM-spezifischer Export
+- optionaler Installer/portable ZIP
+- optionales Hosting nach Datenschutz-/Kundenfreigabe

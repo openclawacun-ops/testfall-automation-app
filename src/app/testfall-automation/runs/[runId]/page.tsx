@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
+import { regenerateTestForgeRun } from "@/app/actions";
 import { Badge, Card, TestForgeHeader, TestForgeShell } from "@/components/testforge-shell";
 import { getTestfallAutomationRun } from "@/lib/testfall-automation";
 import { formatDateTime } from "@/lib/ui";
@@ -19,7 +20,15 @@ export default async function TestfallAutomationRunPage({ params }: Props) {
       <TestForgeHeader
         title={run.title}
         subtitle="Run-Detailansicht für Manifest, Testfälle, offene Fragen und Artefakte"
-        action={<Link href="/testfall-automation" className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:border-violet-200 hover:text-violet-700">← Dashboard</Link>}
+        action={
+          <div className="flex flex-wrap gap-3">
+            <form action={regenerateTestForgeRun}>
+              <input type="hidden" name="runId" value={run.runId} />
+              <button type="submit" className="rounded-[20px] bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-[0_18px_44px_rgba(15,23,42,0.22)] transition duration-200 hover:-translate-y-0.5 hover:bg-slate-800">Neu prüfen & generieren</button>
+            </form>
+            <Link href="/testfall-automation" className="rounded-[20px] border border-white/80 bg-white/72 px-5 py-3 text-sm font-bold text-slate-700 shadow-[0_14px_38px_rgba(15,23,42,0.07)] backdrop-blur-2xl transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:text-slate-950">← Dashboard</Link>
+          </div>
+        }
       />
 
       <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
@@ -36,6 +45,10 @@ export default async function TestfallAutomationRunPage({ params }: Props) {
           <Badge tone="sky">{run.riskLevel ?? "Risiko offen"}</Badge>
           {run.project ? <Badge tone="violet">{run.project}</Badge> : null}
         </div>
+        <div className="mt-5 rounded-3xl border border-white/80 bg-white/58 p-4 text-sm text-slate-700 shadow-sm backdrop-blur-2xl">
+          <p className="font-bold">Neu prüfen & generieren</p>
+          <p className="mt-1 text-slate-500">Erstellt aus gespeicherter Quelle und Vorlage einen neuen Run. Der alte Run bleibt unverändert.</p>
+        </div>
         <div className="mt-5 grid gap-2 text-sm text-slate-500 md:grid-cols-2">
           <p className="break-all">Run-ID: {run.runId}</p>
           <p>Aktualisiert: {formatDateTime(run.updatedAt)}</p>
@@ -45,11 +58,14 @@ export default async function TestfallAutomationRunPage({ params }: Props) {
       </Card>
 
       <section className="mt-6 grid gap-6 xl:grid-cols-2">
-        <Panel title="Manifest / Run Log">
-          {run.manifest ? <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">{JSON.stringify(run.manifest, null, 2)}</pre> : <Empty>Kein Manifest oder Run Log gefunden.</Empty>}
+        <Panel title="Quality Report">
+          {run.qualityReport ? <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">{JSON.stringify(run.qualityReport, null, 2)}</pre> : <Empty>Kein quality-report.json gefunden.</Empty>}
         </Panel>
         <Panel title="Review Summary">
           {run.summaryMarkdown ? <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs leading-5 text-slate-600">{run.summaryMarkdown}</pre> : <Empty>Keine review-summary.md gefunden.</Empty>}
+        </Panel>
+        <Panel title="Manifest / Run Log">
+          {run.manifest ? <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">{JSON.stringify(run.manifest, null, 2)}</pre> : <Empty>Kein Manifest oder Run Log gefunden.</Empty>}
         </Panel>
       </section>
 
@@ -61,9 +77,10 @@ export default async function TestfallAutomationRunPage({ params }: Props) {
         {run.testcases.length ? (
           <div className="grid gap-3 xl:grid-cols-2">
             {run.testcases.map((testcase, index) => (
-              <article key={`${testcase.id ?? "tc"}-${index}`} className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
+              <article key={`${testcase.id ?? "tc"}-${index}`} className="rounded-3xl border border-white/80 bg-white/58 p-4 shadow-sm backdrop-blur-xl">
                 <div className="flex flex-wrap gap-2">
                   <Badge tone="violet">{testcase.id ?? `TC-${index + 1}`}</Badge>
+                  <Badge tone="emerald">{testcase.variant?.replaceAll("_", " ") ?? "Variante offen"}</Badge>
                   <Badge tone="sky">{testcase.category ?? "Kategorie offen"}</Badge>
                   <Badge tone={testcase.priority?.toLowerCase().includes("high") ? "rose" : "slate"}>{testcase.priority ?? "Priorität offen"}</Badge>
                   <Badge tone="amber">Risiko {testcase.risk ?? "offen"}</Badge>
@@ -81,17 +98,18 @@ export default async function TestfallAutomationRunPage({ params }: Props) {
         <Panel title="Open Questions">
           {run.openQuestions.length ? <ul className="grid gap-2 text-sm text-slate-600">{run.openQuestions.map((question) => <li key={question} className="rounded-2xl bg-amber-50 px-4 py-3 text-amber-800">• {question}</li>)}</ul> : <Empty>Keine offenen Fragen im Run-Datensatz.</Empty>}
         </Panel>
-        <Panel title="Export / Artifacts">
+        <Panel title="Fertiger Testfall / Downloads">
           {run.artifacts.length ? (
             <div className="grid gap-2">
               {run.artifacts.map((artifact) => (
-                <div key={artifact.relativePath} className="rounded-3xl border border-slate-100 bg-slate-50 p-4 text-sm">
+                <a key={artifact.relativePath} href={`/testfall-automation/runs/${run.runId}/download/${encodeURIComponent(artifact.name)}`} className="rounded-3xl border border-white/80 bg-white/58 p-4 text-sm shadow-sm backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white/82 hover:shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Badge tone="sky">{artifact.kind}</Badge>
+                    <Badge tone={artifact.name.endsWith(".zip") ? "violet" : "sky"}>{artifact.kind}</Badge>
                     <span className="text-xs font-semibold text-slate-400">{(artifact.bytes / 1024).toFixed(1)} KB</span>
                   </div>
-                  <p className="mt-2 break-all text-xs text-slate-500">{artifact.relativePath}</p>
-                </div>
+                  <p className="mt-2 break-all text-xs text-slate-500">{artifact.name}</p>
+                  <p className="mt-3 text-xs font-bold text-slate-800">Download →</p>
+                </a>
               ))}
             </div>
           ) : <Empty>Keine Artefakte im Run-Verzeichnis gefunden.</Empty>}
@@ -103,7 +121,7 @@ export default async function TestfallAutomationRunPage({ params }: Props) {
 
 function Metric({ label, value, tone }: { label: string; value: string | number; tone: "violet" | "emerald" | "amber" | "sky" }) {
   const map = {
-    violet: "text-violet-700 bg-violet-50",
+    violet: "text-white bg-slate-950 shadow-[0_16px_36px_rgba(15,23,42,0.18)]",
     emerald: "text-emerald-700 bg-emerald-50",
     amber: "text-amber-700 bg-amber-50",
     sky: "text-sky-700 bg-sky-50",
