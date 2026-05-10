@@ -280,6 +280,18 @@ export async function regenerateTestForgeRun(formData: FormData) {
   redirect(`/testfall-automation/runs/${runId}`);
 }
 
+export async function deleteTestForgeRun(formData: FormData) {
+  const runId = String(formData.get("runId") ?? "").trim();
+  const confirmed = String(formData.get("confirmDelete") ?? "") === "yes";
+  const runDir = safeTestfallRunDir(runId);
+  if (!confirmed) redirect(runDir ? `/testfall-automation/runs/${encodeURIComponent(runId)}?error=delete-not-confirmed` : "/testfall-automation/library?deleted=missing");
+  if (!runDir || !fs.existsSync(runDir)) redirect("/testfall-automation/library?deleted=missing");
+  fs.rmSync(runDir, { recursive: true, force: true });
+  revalidatePath("/testfall-automation");
+  revalidatePath("/testfall-automation/library");
+  redirect("/testfall-automation/library?deleted=1");
+}
+
 export async function runTaurusTestfallPilot(formData: FormData) {
   const sourceFile = formData.get("sourceFile") instanceof File ? formData.get("sourceFile") as File : null;
   const templateFile = formData.get("templateFile") instanceof File ? formData.get("templateFile") as File : null;

@@ -12,9 +12,19 @@ const exportTargets = [
 ];
 const gates = [
   "Lokale Verarbeitung: keine externen Calls, keine Kundendatenübertragung",
-  "Review-Fragen werden sichtbar markiert, statt Details zu erfinden",
+  "Requirements Analysis wird pro Run gespeichert und vor Testfällen sichtbar gemacht",
+  "Quality Engine bewertet Testfälle mit Score, Level und Warnungen",
   "Uploads: .txt, .md, .csv, .json, .docx und .xlsx für Kunden-Spezifikationen",
   "MVP-Exports: JSON, Markdown, CSV, XLSX, Summary, Manifest und ZIP",
+];
+
+const productSteps = [
+  "1. Quelle hochladen oder Text einfügen",
+  "2. Anforderungen & Domain-Profil erkennen",
+  "3. Testfälle mit Varianten generieren",
+  "4. Quality Score und Warnungen prüfen",
+  "5. Review-Fragen beantworten / Run neu generieren",
+  "6. XLSX/ZIP/CSV/JSON exportieren",
 ];
 
 type Props = { searchParams?: Promise<{ error?: string }> };
@@ -103,6 +113,13 @@ export default async function TestfallGeneratorPage({ searchParams }: Props) {
             <ul className="mt-4 grid gap-3 text-sm leading-6 text-slate-600">
               {gates.map((gate) => <li key={gate} className="rounded-2xl border border-white/80 bg-white/62 px-4 py-3 shadow-sm backdrop-blur-xl">✓ {gate}</li>)}
             </ul>
+          </Card>
+
+          <Card>
+            <h2 className="text-xl font-bold tracking-[-0.03em]">Produkt-Workflow</h2>
+            <ol className="mt-4 grid gap-3 text-sm leading-6 text-slate-600">
+              {productSteps.map((step) => <li key={step} className="rounded-2xl border border-white/80 bg-white/62 px-4 py-3 shadow-sm backdrop-blur-xl">{step}</li>)}
+            </ol>
           </Card>
 
           <button type="submit" className="rounded-2xl bg-slate-950 px-6 py-4 text-sm font-bold text-white shadow-[0_20px_45px_rgba(15,23,42,0.22)] transition hover:-translate-y-0.5 hover:bg-slate-800">Run lokal generieren</button>

@@ -19,8 +19,17 @@ export type TestfallRunSummary = {
   stepCount: number;
   openQuestionsCount: number;
   riskLevel?: string;
+  averageQuality?: number;
+  weakTestcases: string[];
   guardStatus: "review_required" | "ready_for_review" | "missing_testcases" | "missing_manifest" | "missing_exports";
   artifacts: TestfallArtifact[];
+};
+
+export type TestcaseQualitySummary = {
+  score?: number;
+  level?: string;
+  domainProfile?: string;
+  warnings: string[];
 };
 
 export type TestfallCase = {
@@ -32,12 +41,14 @@ export type TestfallCase = {
   risk?: string;
   stepsCount: number;
   sourceRequirement?: string;
+  quality?: TestcaseQualitySummary;
 };
 
 export type TestfallRunDetail = TestfallRunSummary & {
   manifest: Record<string, unknown> | null;
   qualityReport: Record<string, unknown> | null;
   summaryMarkdown: string;
+  requirementsAnalysisMarkdown: string;
   testcases: TestfallCase[];
   openQuestions: string[];
   missingFiles: string[];
@@ -46,7 +57,7 @@ export type TestfallRunDetail = TestfallRunSummary & {
 const workspace = process.env.OPENCLAW_WORKSPACE ?? path.join(process.env.USERPROFILE ?? process.env.HOME ?? "C:\\Users\\openc", ".openclaw", "workspace");
 const runsRoot = path.join(workspace, "testfall-pilot", "runs");
 
-const preferredArtifactOrder = ["review-package.zip", "testcases.md", "testcases.csv", "testcases.json", "review-summary.md", "review-package-manifest.json", "quality-report.json", "source-input.txt", "template-context.txt"];
+const preferredArtifactOrder = ["review-package.zip", "requirements-analysis.md", "requirements-analysis.json", "testcases.md", "testcases.csv", "testcases.json", "review-summary.md", "review-package-manifest.json", "quality-report.json", "source-input.txt", "template-context.txt"];
 
 const artifactKinds: Record<string, string> = {
   "testcases.json": "Testfälle JSON",
@@ -59,6 +70,8 @@ const artifactKinds: Record<string, string> = {
   "automation-run-log.json": "Run Log",
   "quality-report.json": "Quality Report",
   "review-package-manifest.json": "Manifest",
+  "requirements-analysis.json": "Requirements Analysis JSON",
+  "requirements-analysis.md": "Requirements Analysis",
   "source-input.txt": "Quelle",
   "template-context.txt": "Vorlagen-Kontext",
 };
@@ -93,6 +106,10 @@ function asNumber(value: unknown): number | undefined {
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function asStringArray(value: unknown): string[] {
+  return asArray(value).map(String);
 }
 
 function safeRunDir(runId: string) {
@@ -164,6 +181,8 @@ function parseRun(runId: string, runDir: string): TestfallRunSummary {
     stepCount,
     openQuestionsCount,
     riskLevel: asString(summary?.risk_level),
+    averageQuality: asNumber(quality?.average_testcase_quality),
+    weakTestcases: asStringArray(quality?.weak_testcases),
     guardStatus: qualityStatus ?? (!hasTestcases ? "missing_testcases" : !hasManifest ? "missing_manifest" : openQuestionsCount > 0 ? "review_required" : "ready_for_review"),
     artifacts,
   };
@@ -187,6 +206,7 @@ export function getTestfallAutomationRun(runId: string): TestfallRunDetail | nul
   const testcasesJson = asRecord(readJson(path.join(runDir, "testcases.json")));
   const testcases = asArray(testcasesJson?.testcases).map((item) => {
     const record = asRecord(item);
+    const testcaseQuality = asRecord(record?.quality);
     return {
       id: asString(record?.id),
       title: asString(record?.title),
@@ -196,6 +216,12 @@ export function getTestfallAutomationRun(runId: string): TestfallRunDetail | nul
       risk: asString(record?.risk),
       sourceRequirement: asString(record?.source_requirement),
       stepsCount: asArray(record?.steps).length,
+      quality: testcaseQuality ? {
+        score: asNumber(testcaseQuality.score),
+        level: asString(testcaseQuality.level),
+        domainProfile: asString(testcaseQuality.domain_profile),
+        warnings: asStringArray(testcaseQuality.warnings),
+      } : undefined,
     };
   });
   const openQuestions = asArray(testcasesJson?.open_questions).map(String);
@@ -206,6 +232,7 @@ export function getTestfallAutomationRun(runId: string): TestfallRunDetail | nul
     manifest,
     qualityReport,
     summaryMarkdown: readText(path.join(runDir, "review-summary.md")),
+    requirementsAnalysisMarkdown: readText(path.join(runDir, "requirements-analysis.md")),
     testcases,
     openQuestions,
     missingFiles: expectedFiles.filter((file) => !fs.existsSync(path.join(runDir, file))),

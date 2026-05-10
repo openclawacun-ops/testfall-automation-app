@@ -171,6 +171,44 @@ function splitRequirements(sourceText: string) {
   return Array.from(candidates.values()).slice(0, 40);
 }
 
+function buildRequirementsAnalysis(requirements: string[], preset: TestForgePreset) {
+  return requirements.map((requirement, index) => {
+    const category = inferCategory(requirement, preset);
+    const domainProfile = inferDomainProfile(requirement, preset);
+    const risk = inferRisk(requirement);
+    const hints = extractConcreteHints(requirement);
+    return {
+      id: `REQ-${String(index + 1).padStart(3, "0")}`,
+      requirement,
+      short: shortRequirement(requirement),
+      category,
+      domain_profile: domainProfile,
+      risk,
+      extracted_data: hints.data,
+      planned_variants: ["positive", "negative", "edge_regression", "permission", "integration_export"],
+    };
+  });
+}
+
+function requirementsAnalysisMarkdown(project: string, analysis: ReturnType<typeof buildRequirementsAnalysis>) {
+  return [
+    `# Requirements Analysis · ${project}`,
+    "",
+    "Diese Analyse zeigt, welche Anforderungen TestForge vor der Testfallgenerierung erkannt hat.",
+    "",
+    ...analysis.flatMap((item) => [
+      `## ${item.id} · ${item.short}`,
+      `- Kategorie: ${item.category}`,
+      `- Domain Profile: ${item.domain_profile}`,
+      `- Risiko: ${item.risk}`,
+      `- Geplante Varianten: ${item.planned_variants.join(", ")}`,
+      `- Extrahierte Daten/Hinweise: ${item.extracted_data.length ? item.extracted_data.join(" | ") : "keine konkreten Werte erkannt"}`,
+      `- Quelle: ${item.requirement}`,
+      "",
+    ]),
+  ].join("\n");
+}
+
 function shortRequirement(requirement: string) {
   return requirement.replace(/^(als|as a|user story:?)\s+/i, "").replace(/\s+/g, " ").slice(0, 92);
 }
@@ -638,6 +676,7 @@ export function generateTestfallRun(input: GenerateTestfallRunInput) {
   fs.mkdirSync(runDir, { recursive: true });
 
   const requirements = splitRequirements(sourceText);
+  const requirementsAnalysis = buildRequirementsAnalysis(requirements, preset);
   const testcases = buildTestcases(requirements, preset, templateText);
   const openQuestions = findOpenQuestions(sourceText, requirements);
   const createdAt = new Date().toISOString();
@@ -651,8 +690,10 @@ export function generateTestfallRun(input: GenerateTestfallRunInput) {
 
   fs.writeFileSync(path.join(runDir, "source-input.txt"), sourceText, "utf8");
   if (templateText) fs.writeFileSync(path.join(runDir, "template-context.txt"), templateText, "utf8");
+  fs.writeFileSync(path.join(runDir, "requirements-analysis.json"), JSON.stringify({ project, run_id: runId, requirements: requirementsAnalysis }, null, 2), "utf8");
+  fs.writeFileSync(path.join(runDir, "requirements-analysis.md"), requirementsAnalysisMarkdown(project, requirementsAnalysis), "utf8");
 
-  const testcasesPayload = { project, run_id: runId, created_at: createdAt, generator: "testforge-local-mvp", source: { kind: sourceKind, name: sourceName }, template, export_targets: selectedExports, summary, testcases, open_questions: openQuestions };
+  const testcasesPayload = { project, run_id: runId, created_at: createdAt, generator: "testforge-local-mvp", source: { kind: sourceKind, name: sourceName }, template, export_targets: selectedExports, summary, requirements_analysis: requirementsAnalysis, testcases, open_questions: openQuestions };
   fs.writeFileSync(path.join(runDir, "testcases.json"), JSON.stringify(testcasesPayload, null, 2), "utf8");
   fs.writeFileSync(path.join(runDir, "testcases.md"), toMarkdown(project, testcases, openQuestions), "utf8");
   fs.writeFileSync(path.join(runDir, "testcases.csv"), toCsv(testcases), "utf8");
@@ -693,13 +734,13 @@ export function generateTestfallRun(input: GenerateTestfallRunInput) {
     source: { kind: sourceKind, name: sourceName, artifact: "source-input.txt" },
     template,
     export_targets: selectedExports,
-    artifacts: [...requiredExports, "source-input.txt", ...(templateText ? ["template-context.txt"] : []), "review-package.zip"],
+    artifacts: [...requiredExports, "requirements-analysis.json", "requirements-analysis.md", "source-input.txt", ...(templateText ? ["template-context.txt"] : []), "review-package.zip"],
     quality,
   };
   fs.writeFileSync(path.join(runDir, "quality-report.json"), JSON.stringify(quality, null, 2) + "\n", "utf8");
   fs.writeFileSync(path.join(runDir, "review-package-manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
 
-  const packageFiles = [...requiredExports, "source-input.txt", ...(templateText ? ["template-context.txt"] : [])]
+  const packageFiles = [...requiredExports, "requirements-analysis.json", "requirements-analysis.md", "source-input.txt", ...(templateText ? ["template-context.txt"] : [])]
     .filter((fileName) => fs.existsSync(path.join(runDir, fileName)))
     .map((fileName) => ({ fileName, buffer: fs.readFileSync(path.join(runDir, fileName)) }));
   createStoreZip(path.join(runDir, "review-package.zip"), packageFiles);

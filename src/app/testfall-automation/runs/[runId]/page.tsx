@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { regenerateTestForgeRun } from "@/app/actions";
+import { deleteTestForgeRun, regenerateTestForgeRun } from "@/app/actions";
 import { Badge, Card, TestForgeHeader, TestForgeShell } from "@/components/testforge-shell";
 import { getTestfallAutomationRun } from "@/lib/testfall-automation";
 import { formatDateTime } from "@/lib/ui";
@@ -26,6 +26,11 @@ export default async function TestfallAutomationRunPage({ params }: Props) {
               <input type="hidden" name="runId" value={run.runId} />
               <button type="submit" className="rounded-[20px] bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-[0_18px_44px_rgba(15,23,42,0.22)] transition duration-200 hover:-translate-y-0.5 hover:bg-slate-800">Neu prüfen & generieren</button>
             </form>
+            <form action={deleteTestForgeRun}>
+              <input type="hidden" name="runId" value={run.runId} />
+              <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-rose-700"><input type="checkbox" name="confirmDelete" value="yes" required className="accent-rose-600" /> bestätigen</label>
+              <button type="submit" className="rounded-[20px] border border-rose-200 bg-rose-50 px-5 py-3 text-sm font-bold text-rose-700 shadow-[0_14px_38px_rgba(225,29,72,0.08)] transition duration-200 hover:-translate-y-0.5 hover:bg-rose-100">Run löschen</button>
+            </form>
             <Link href="/testfall-automation" className="rounded-[20px] border border-white/80 bg-white/72 px-5 py-3 text-sm font-bold text-slate-700 shadow-[0_14px_38px_rgba(15,23,42,0.07)] backdrop-blur-2xl transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:text-slate-950">← Dashboard</Link>
           </div>
         }
@@ -36,7 +41,7 @@ export default async function TestfallAutomationRunPage({ params }: Props) {
         <Metric label="Testfälle" value={run.testcaseCount} tone="violet" />
         <Metric label="Steps" value={run.stepCount} tone="sky" />
         <Metric label="Offene Fragen" value={run.openQuestionsCount} tone={run.openQuestionsCount ? "amber" : "emerald"} />
-        <Metric label="Artefakte" value={run.artifacts.length} tone="violet" />
+        <Metric label="Ø Qualität" value={run.averageQuality ? `${run.averageQuality}/100` : "n/a"} tone={run.averageQuality && run.averageQuality >= 82 ? "emerald" : "amber"} />
       </section>
 
       <Card className="mt-8">
@@ -58,6 +63,9 @@ export default async function TestfallAutomationRunPage({ params }: Props) {
       </Card>
 
       <section className="mt-6 grid gap-6 xl:grid-cols-2">
+        <Panel title="Requirements Analysis">
+          {run.requirementsAnalysisMarkdown ? <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs leading-5 text-slate-600">{run.requirementsAnalysisMarkdown}</pre> : <Empty>Noch keine requirements-analysis.md gefunden. Neue Runs erzeugen diese Analyse automatisch.</Empty>}
+        </Panel>
         <Panel title="Quality Report">
           {run.qualityReport ? <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">{JSON.stringify(run.qualityReport, null, 2)}</pre> : <Empty>Kein quality-report.json gefunden.</Empty>}
         </Panel>
@@ -84,9 +92,11 @@ export default async function TestfallAutomationRunPage({ params }: Props) {
                   <Badge tone="sky">{testcase.category ?? "Kategorie offen"}</Badge>
                   <Badge tone={testcase.priority?.toLowerCase().includes("high") ? "rose" : "slate"}>{testcase.priority ?? "Priorität offen"}</Badge>
                   <Badge tone="amber">Risiko {testcase.risk ?? "offen"}</Badge>
+                  {testcase.quality ? <Badge tone={testcase.quality.level === "strong" ? "emerald" : testcase.quality.level === "usable" ? "sky" : "amber"}>Q {testcase.quality.score ?? "?"}/100</Badge> : null}
                 </div>
                 <h3 className="mt-3 text-base font-bold text-slate-950">{testcase.title ?? "Unbenannter Testfall"}</h3>
-                <p className="mt-2 text-sm text-slate-500">{testcase.stepsCount} Steps</p>
+                <p className="mt-2 text-sm text-slate-500">{testcase.stepsCount} Steps{testcase.quality?.domainProfile ? ` · ${testcase.quality.domainProfile.replaceAll("_", " ")}` : ""}</p>
+                {testcase.quality?.warnings.length ? <ul className="mt-3 grid gap-1 text-xs leading-5 text-amber-700">{testcase.quality.warnings.slice(0, 3).map((warning) => <li key={warning} className="rounded-2xl bg-amber-50 px-3 py-2">⚠ {warning}</li>)}</ul> : null}
                 {testcase.sourceRequirement ? <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-400">Quelle: {testcase.sourceRequirement}</p> : null}
               </article>
             ))}
