@@ -1,0 +1,2 @@
+- 2026-05-05 11:45-14:50 Europe/Berlin — Protected work block: Aurus to work productively/proactively for Acun.
+- 2026-05-06 08:43-16:00 Europe/Berlin — Protected work block: Aurus to work on Higgsfield connection/integration and continue useful Content Account / Mission Control / customer-material work; no external posting/sending without Acun approval.
