@@ -111,9 +111,22 @@ Alle drei sollten grün sein.
 - Download-Routen schützen gegen Path Traversal.
 - Alte Runs werden bei „Neu prüfen & generieren“ nicht überschrieben.
 
+## Hosting
+
+Für Website-Hosting mit Uploads/Downloads ist Render oder Railway mit persistentem `/data` Storage empfohlen.
+
+Siehe: [`docs/hosting.md`](docs/hosting.md)
+
+Kurzfassung:
+
+- Render: `render.yaml` + Persistent Disk `/data`
+- Railway: `railway.json` + Volume `/data`
+- Vercel: nur Demo empfohlen, weil Dateispeicher nicht dauerhaft ist
+
 ## Nächste Produktstufe
 
 - echtes Template-Mapping pro Kundenschema
 - QC/ALM-spezifischer Export
+- Auth/Login vor öffentlicher Nutzung
+- Löschfunktion für Runs
 - optionaler Installer/portable ZIP
-- optionales Hosting nach Datenschutz-/Kundenfreigabe

@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: testforge
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: OPENCLAW_WORKSPACE
+        value: /data
+    disk:
+      name: testforge-data
+      mountPath: /data
+      sizeGB: 1
