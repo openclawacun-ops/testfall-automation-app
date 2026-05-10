@@ -13,6 +13,7 @@ const contentTypes: Record<string, string> = {
   ".md": "text/markdown; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
   ".zip": "application/zip",
+  ".eml": "message/rfc822",
 };
 
 export async function GET(_request: Request, { params }: Props) {

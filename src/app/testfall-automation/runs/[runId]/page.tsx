@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { deleteTestForgeRun, regenerateTestForgeRun } from "@/app/actions";
+import { deleteTestForgeRun, prepareTestForgeEmail, regenerateTestForgeRun } from "@/app/actions";
 import { Badge, Card, TestForgeHeader, TestForgeShell } from "@/components/testforge-shell";
 import { getTestfallAutomationRun } from "@/lib/testfall-automation";
 import { formatDateTime } from "@/lib/ui";
@@ -10,8 +10,9 @@ export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ runId: string }> };
 
-export default async function TestfallAutomationRunPage({ params }: Props) {
+export default async function TestfallAutomationRunPage({ params, searchParams }: Props & { searchParams?: Promise<{ email?: string }> }) {
   const { runId } = await params;
+  const emailStatus = (await searchParams)?.email;
   const run = getTestfallAutomationRun(runId);
   if (!run) notFound();
 
@@ -78,6 +79,25 @@ export default async function TestfallAutomationRunPage({ params }: Props) {
       </section>
 
       <Card className="mt-6">
+        {emailStatus === "prepared" ? <div className="mb-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">E-Mail-Datei und Textentwurf wurden erzeugt. Du findest sie unten bei den Downloads.</div> : null}
+        {emailStatus === "invalid-recipient" ? <div className="mb-5 rounded-3xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800">Bitte eine gültige Empfänger-E-Mail eintragen.</div> : null}
+        <div className="mb-6 rounded-3xl border border-white/80 bg-white/60 p-5 shadow-sm backdrop-blur-xl">
+          <h2 className="text-2xl font-bold tracking-[-0.03em]">Per E-Mail vorbereiten</h2>
+          <p className="mt-1 text-sm text-slate-500">Erzeugt eine fertige .eml-Mail mit Review-Package-Anhang. Öffnen, prüfen und im Mailprogramm absenden.</p>
+          <form action={prepareTestForgeEmail} className="mt-5 grid gap-3 md:grid-cols-2">
+            <input type="hidden" name="runId" value={run.runId} />
+            <label className="grid gap-2 text-sm font-bold text-slate-700">Empfänger
+              <input name="to" type="email" required placeholder="kunde@example.com" className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-bold text-slate-700">Betreff
+              <input name="subject" defaultValue={`TestForge Testfallpaket · ${run.project ?? run.title}`} className="rounded-2xl border border-white/80 bg-white/80 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm outline-none focus:border-slate-400" />
+            </label>
+            <label className="grid gap-2 text-sm font-bold text-slate-700 md:col-span-2">Nachricht
+              <textarea name="message" rows={5} defaultValue={`Hallo,\n\nanbei das TestForge Review-Paket für ${run.project ?? run.title}.\n\nEnthalten sind Testfälle, Requirements Analysis, Quality Report und Exportdateien.\n\nViele Grüße`} className="rounded-3xl border border-white/80 bg-white/80 px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm outline-none focus:border-slate-400" />
+            </label>
+            <button type="submit" className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-[0_16px_36px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:bg-slate-800 md:col-span-2">E-Mail-Datei mit Paket erzeugen</button>
+          </form>
+        </div>
         <div className="mb-5 flex items-center justify-between gap-3">
           <h2 className="text-2xl font-bold tracking-[-0.03em]">Testfälle</h2>
           <Badge tone="violet">{run.testcases.length}</Badge>

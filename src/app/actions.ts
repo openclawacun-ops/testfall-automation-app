@@ -135,6 +135,14 @@ function readRunJson(runDir: string, fileName: string) {
   }
 }
 
+function sanitizeEmailFileName(value: string) {
+  return value.replace(/[^a-zA-Z0-9_.-]+/g, "_").slice(0, 80) || "testforge-email";
+}
+
+function mimeBoundary() {
+  return `----TestForgeBoundary${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+}
+
 export async function createTask(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
@@ -290,6 +298,68 @@ export async function deleteTestForgeRun(formData: FormData) {
   revalidatePath("/testfall-automation");
   revalidatePath("/testfall-automation/library");
   redirect("/testfall-automation/library?deleted=1");
+}
+
+export async function prepareTestForgeEmail(formData: FormData) {
+  const runId = String(formData.get("runId") ?? "").trim();
+  const to = String(formData.get("to") ?? "").trim();
+  const subject = String(formData.get("subject") ?? "").trim() || "TestForge Testfallpaket";
+  const message = String(formData.get("message") ?? "").trim();
+  const runDir = safeTestfallRunDir(runId);
+  if (!runDir || !fs.existsSync(runDir)) redirect("/testfall-automation/library?email=missing-run");
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) redirect(`/testfall-automation/runs/${encodeURIComponent(runId)}?email=invalid-recipient`);
+
+  const manifest = readRunJson(runDir, "review-package-manifest.json");
+  const testcasesJson = readRunJson(runDir, "testcases.json");
+  const project = String(testcasesJson?.project ?? manifest?.project ?? "TestForge Run");
+  const packagePath = path.join(runDir, "review-package.zip");
+  const packageExists = fs.existsSync(packagePath);
+  const body = [
+    message || `Hallo,\n\nanbei das TestForge Review-Paket für ${project}.\n\nEnthalten sind Testfälle, Quality Report, Requirements Analysis und Exportdateien.\n\nViele Grüße`,
+    "",
+    "---",
+    `Run-ID: ${runId}`,
+    `Projekt: ${project}`,
+    packageExists ? "Anhang: review-package.zip" : "Hinweis: review-package.zip wurde nicht gefunden; bitte Artefakte im Run prüfen.",
+  ].join("\n");
+
+  const draftTxt = [
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    "",
+    body,
+  ].join("\n");
+  fs.writeFileSync(path.join(runDir, "email-draft.txt"), draftTxt, "utf8");
+
+  const boundary = mimeBoundary();
+  const attachment = packageExists ? fs.readFileSync(packagePath).toString("base64").replace(/(.{76})/g, "$1\r\n") : "";
+  const emlParts = [
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/mixed; boundary=\"${boundary}\"`,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    body,
+  ];
+  if (packageExists) {
+    emlParts.push(
+      `--${boundary}`,
+      "Content-Type: application/zip; name=\"review-package.zip\"",
+      "Content-Transfer-Encoding: base64",
+      "Content-Disposition: attachment; filename=\"review-package.zip\"",
+      "",
+      attachment,
+    );
+  }
+  emlParts.push(`--${boundary}--`, "");
+  fs.writeFileSync(path.join(runDir, `${sanitizeEmailFileName(project)}.eml`), emlParts.join("\r\n"), "utf8");
+
+  revalidatePath(`/testfall-automation/runs/${runId}`);
+  redirect(`/testfall-automation/runs/${runId}?email=prepared`);
 }
 
 export async function runTaurusTestfallPilot(formData: FormData) {

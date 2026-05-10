@@ -61,7 +61,7 @@ export type TestfallRunDetail = TestfallRunSummary & {
 const workspace = process.env.OPENCLAW_WORKSPACE ?? path.join(process.env.USERPROFILE ?? process.env.HOME ?? "C:\\Users\\openc", ".openclaw", "workspace");
 const runsRoot = path.join(workspace, "testfall-pilot", "runs");
 
-const preferredArtifactOrder = ["review-package.zip", "requirements-analysis.md", "requirements-analysis.json", "testcases.md", "testcases.csv", "testcases.json", "review-summary.md", "review-package-manifest.json", "quality-report.json", "source-input.txt", "template-context.txt"];
+const preferredArtifactOrder = ["review-package.zip", "email-draft.txt", "requirements-analysis.md", "requirements-analysis.json", "testcases.md", "testcases.csv", "testcases.json", "review-summary.md", "review-package-manifest.json", "quality-report.json", "source-input.txt", "template-context.txt"];
 
 const artifactKinds: Record<string, string> = {
   "testcases.json": "Testfälle JSON",
@@ -76,6 +76,7 @@ const artifactKinds: Record<string, string> = {
   "review-package-manifest.json": "Manifest",
   "requirements-analysis.json": "Requirements Analysis JSON",
   "requirements-analysis.md": "Requirements Analysis",
+  "email-draft.txt": "E-Mail Entwurf",
   "source-input.txt": "Quelle",
   "template-context.txt": "Vorlagen-Kontext",
 };
@@ -154,7 +155,7 @@ function getArtifacts(runDir: string): TestfallArtifact[] {
       const stat = fs.statSync(full);
       return {
         name: entry.name,
-        kind: artifactKinds[entry.name] ?? (path.extname(entry.name).replace(/^\./, "").toUpperCase() || "Artifact"),
+        kind: artifactKinds[entry.name] ?? (entry.name.endsWith(".eml") ? "E-Mail Datei" : path.extname(entry.name).replace(/^\./, "").toUpperCase() || "Artifact"),
         relativePath: path.relative(workspace, full),
         bytes: stat.size,
         updatedAt: stat.mtime.toISOString(),
